@@ -14,9 +14,24 @@
 #   ...
 
 
-: "${NETNS:=vpn}"
-
 TMPFILE_DIR=/var/local/openvpn-netns
+
+
+if [ -z "$NETNS" ]; then
+    NETNS=vpn
+else
+    # sanity check for $NETNS Because the namespace is implemented as
+    # a file, the character '/' and the names "." and ".." are
+    # forbidden. (Character '\0' and string "" are also forbidden, but
+    # '\0' cannot be passed in an environment variable, and "" is
+    # handled specially above.)
+    case "$NETNS" in
+        */*|.|..)
+            echo "Invalid network namespace" >&2
+            exit 2
+            ;;
+    esac
+fi
 
 
 case "$script_type" in
