@@ -1,0 +1,123 @@
+#!/bin/sh
+
+script_dir="$(dirname "`readlink -f "$0"`")"/openvpn-scripts
+
+: ${NETNS:=vpn}
+
+if [ $# -eq 0  -o  "$1" = "-h"  -o  "$1" = "--help" ]; then
+    prog="${0##*/}"
+    cat >&2 <<EOF
+Start openvpn connection and run command in network namespace. When
+the command terminates, openvpn connection is closed. Network
+namespace name is given in the environment variable NETNS, or if it is
+not set, the default name "vpn" is used.
+
+usage:
+    $prog <openvpn_options> ...               (starts shell)
+    $prog <openvpn_options> ... -- <command> [<args> ...]
+EOF
+    exit 2
+fi
+
+
+# make fifo for signaling command termination
+tmpdir=/dev/shm
+[ -d "$tmpdir" ] || tmpdir=/tmp
+fifo="$tmpdir/openvpn-netns-$$-fifo"
+mkfifo "$fifo"  || exit
+
+
+# separate openvpn arguments into list of positional argument
+# references for eval
+openvpn_args_eval=
+num_openvpn_args=0
+_openvpn_args () {
+    while [ $# -gt 0  -a  "$1" != "--" ]; do
+        num_openvpn_args=$(( num_openvpn_args + 1 ))
+        openvpn_args_eval="$openvpn_args_eval \"\${$num_openvpn_args}\""
+        shift
+    done
+}
+_openvpn_args "$@"
+
+# Run the following as background job. Start openvpn as root, wait for
+# command termination message, and then terminate openvpn. (sudo
+# password prompt seems to work ok with this background-stdin-redirect
+# mess.)
+eval sudo /bin/sh -s 'dash-guard "$NETNS" "$script_dir"/netns "$fifo" "$tmpdir"' \
+     "$openvpn_args_eval" <<'EOF' &
+    netns="$2"
+    script="$3"
+    fifo="$4"
+    tmpdir="$5"
+    shift 5
+
+    IFS='
+'
+
+    pidfile="$tmpdir/openvpn-netns-$$-openvpn.pid"
+    openvpn \
+        --writepid "$pidfile" \
+        --ifconfig-noexec --route-noexec \
+        --script-security 2 \
+        --setenv NETNS "$netns" \
+        --up "$script" \
+        --route-up "$script" \
+        --down "$script" \
+        "$@" \
+        | \
+        while read -r line; do
+            echo "openvpn: $line"
+        done &
+
+    read dummy_var < "$fifo"
+    rm "$fifo"
+
+    kill -TERM $(cat "$pidfile")
+    rm "$pidfile"
+    wait
+EOF
+
+
+# shift out openvpn arguments
+shift $num_openvpn_args
+# and "--" if any
+[ $# -gt 0 ] && shift
+
+# wait for netns creation
+until [ -e "/var/run/netns/$NETNS" ]; do sleep 1; done
+
+# in the netns, wait for default IPv4 route, then run the command
+netns-exec -- "$NETNS" /bin/sh -c '
+    NETNS="$1"
+    shift
+
+    while [ -z "`ip route show to exact 0.0.0.0/0`" ]; do sleep 1; done
+
+    echo
+    echo "Connection established. Using netns \"$NETNS\"."
+    echo "Your IP address:" $(
+        ip -4 address show \
+            | sed -ne '\''s|^.*inet \([0-9]\+\(\.[0-9]\+\)\{3\}\)[^0-9].*$|\1|p'\'' \
+            | grep -v "^127\." )
+    echo "Starting $*"
+    echo
+
+    if [ $# -gt 0 ]; then
+        exec "$@"
+    else
+        exec "${SHELL:-/bin/sh}"
+    fi
+    ' '<wait-for-connection>' "$NETNS" "$@"
+status=$?
+
+echo
+echo 'Command exited.'
+
+# send message to root subshell to terminate openvpn
+echo done > "$fifo"
+
+echo 'Waiting for openvpn to terminate.'
+wait
+
+exit $status

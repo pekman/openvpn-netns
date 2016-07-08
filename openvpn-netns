@@ -1,0 +1,17 @@
+#!/bin/sh
+
+SCRIPT_DIR="$(dirname "`readlink -f "$0"`")"/openvpn-scripts
+
+case "$1" in
+    -*) config_arg= ;;
+    *) config_arg="--config" ;;
+esac
+
+exec sudo openvpn \
+    --ifconfig-noexec --route-noexec \
+    --script-security 2 \
+    --setenv NETNS "$NETNS" \
+    --up "$SCRIPT_DIR"/netns \
+    --route-up "$SCRIPT_DIR"/netns \
+    --down "$SCRIPT_DIR"/netns \
+    $config_arg "$@"
