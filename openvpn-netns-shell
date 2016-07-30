@@ -4,7 +4,7 @@ script_dir="$(dirname "`readlink -f "$0"`")"/openvpn-scripts
 
 : ${NETNS:=vpn}
 
-if [ $# -eq 0  -o  "$1" = "-h"  -o  "$1" = "--help" ]; then
+usage () {
     prog="${0##*/}"
     cat >&2 <<EOF
 Start openvpn connection and run command in network namespace. When
@@ -13,11 +13,68 @@ namespace name is given in the environment variable NETNS, or if it is
 not set, the default name "vpn" is used.
 
 usage:
-    $prog <openvpn_options> ...               (starts shell)
-    $prog <openvpn_options> ... -- <command> [<args> ...]
+    $prog [<options>] <openvpn_options> ...               (starts shell)
+    $prog [<options>] <openvpn_options> ... -- <command> [<args> ...]
+
+Options for this program start with + to separate them from OpenVPN
+options. They must be before any OpenVPN options.
+    +h, ++help        show this help
+    +q, ++quiet       don't show messages or OpenVPN output
+    +d, ++dbus        start D-Bus session bus proxy
 EOF
+}
+
+if [ $# -eq 0 ]; then
+    usage
     exit 2
+elif [ $# -eq 1 ] && [ "$1" = "-h"  -o  "$1" = "--help" ]; then
+    usage
+    exit
 fi
+
+
+# handle our own options, which are first and start with + or ++
+quiet=
+netns_exec=netns-exec
+_handle_option () {
+    opt=
+    case "$1" in
+        q|++quiet)  quiet=true ;;
+        d|++dbus)  netns_exec=netns-exec-dbus ;;
+        h|++help)
+            usage
+            exit
+            ;;
+        '?')
+            echo "Unrecognized option: +$OPTARG" >&2
+            exit 2
+            ;;
+        *)
+            echo "Unrecognized option: $1" >&2
+            exit 2
+            ;;
+    esac
+}
+
+while [ $# -gt 0  -a  "${1#+}" != "$1" ]; do
+    case "$1" in
+        ++?*)  # long option
+            _handle_option "$1"
+            ;;
+        +?*)  # one or more short options
+            OPTIND=1
+            while getopts :qdh opt -"${1#+}"; do
+                _handle_option "$opt"
+            done
+            ;;
+        *)
+            echo "Unrecognized option: $1" >&2
+            exit 2
+            ;;
+    esac
+    shift
+done
+
 
 
 # make fifo for signaling command termination
@@ -44,8 +101,9 @@ _openvpn_args "$@"
 # command termination message, and then terminate openvpn. (sudo
 # password prompt seems to work ok with this background-stdin-redirect
 # mess.)
-eval sudo /bin/sh -s 'dash-guard "$NETNS" "$script_dir"/netns "$fifo" "$tmpdir"' \
+eval sudo /bin/sh -s '"$quiet" "$NETNS" "$script_dir"/netns "$fifo" "$tmpdir"' \
      "$openvpn_args_eval" <<'EOF' &
+    quiet="$1"
     netns="$2"
     script="$3"
     fifo="$4"
@@ -67,7 +125,7 @@ eval sudo /bin/sh -s 'dash-guard "$NETNS" "$script_dir"/netns "$fifo" "$tmpdir"'
         "$@" \
         | \
         while read -r line; do
-            echo "openvpn: $line"
+            [ -z "$quiet" ] && echo "openvpn: $line"
         done &
 
     read dummy_var < "$fifo"
@@ -88,36 +146,43 @@ shift $num_openvpn_args
 until [ -e "/var/run/netns/$NETNS" ]; do sleep 1; done
 
 # in the netns, wait for default IPv4 route, then run the command
-netns-exec -- "$NETNS" /bin/sh -c '
+$netns_exec -- "$NETNS" /bin/sh -c '
     NETNS="$1"
-    shift
+    quiet="$2"
+    shift 2
 
     while [ -z "`ip route show to exact 0.0.0.0/0`" ]; do sleep 1; done
 
-    echo
-    echo "Connection established. Using netns \"$NETNS\"."
-    echo "Your IP address:" $(
-        ip -4 address show \
-            | sed -ne '\''s|^.*inet \([0-9]\+\(\.[0-9]\+\)\{3\}\)[^0-9].*$|\1|p'\'' \
-            | grep -v "^127\." )
-    echo "Starting $*"
-    echo
+    if [ -z "$quiet" ]; then
+        echo
+        echo "Connection established. Using netns \"$NETNS\"."
+        echo "Your IP address:" $(
+            ip -4 address show \
+                | sed -ne '\''s|^.*inet \([0-9]\+\(\.[0-9]\+\)\{3\}\)[^0-9].*$|\1|p'\'' \
+                | grep -v "^127\." )
+        echo "Starting $*"
+        echo
+    fi
 
     if [ $# -gt 0 ]; then
         exec "$@"
     else
         exec "${SHELL:-/bin/sh}"
     fi
-    ' '<wait-for-connection>' "$NETNS" "$@"
+    ' '<wait-for-connection>' "$NETNS" "$quiet" "$@"
 status=$?
 
-echo
-echo 'Command exited.'
+if [ -z "$quiet" ]; then
+    echo
+    echo 'Command exited.'
+fi
 
 # send message to root subshell to terminate openvpn
 echo done > "$fifo"
 
-echo 'Waiting for openvpn to terminate.'
+if [ -z "$quiet" ]; then
+    echo 'Waiting for openvpn to terminate.'
+fi
 wait
 
 exit $status
