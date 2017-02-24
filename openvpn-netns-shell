@@ -114,6 +114,10 @@ eval sudo /bin/sh -s '"$quiet" "$NETNS" "$script_dir"/netns "$fifo" "$tmpdir"' \
 '
 
     pidfile="$tmpdir/openvpn-netns-$$-openvpn.pid"
+
+    trap 'rm "$fifo" "$pidfile" 2>/dev/null' EXIT
+    trap 'exit 0' CHLD
+
     openvpn \
         --writepid "$pidfile" \
         --ifconfig-noexec --route-noexec \
@@ -128,13 +132,18 @@ eval sudo /bin/sh -s '"$quiet" "$NETNS" "$script_dir"/netns "$fifo" "$tmpdir"' \
             [ -z "$quiet" ] && echo "openvpn: $line"
         done &
 
+    # close stderr to suppress "interrupted system call" error
+    # messages from read if openvpn terminates on its own
+    exec 2>&-
+    # wait for command termination message from main script
     read dummy_var < "$fifo"
-    rm "$fifo"
 
+    # terminate openvpn
+    trap - CHLD
     kill -TERM $(cat "$pidfile")
-    rm "$pidfile"
     wait
 EOF
+sudo_pid=$!
 
 
 # shift out openvpn arguments
@@ -143,7 +152,11 @@ shift $num_openvpn_args
 [ $# -gt 0 ] && shift
 
 # wait for netns creation
-until [ -e "/var/run/netns/$NETNS" ]; do sleep 1; done
+until [ -e "/var/run/netns/$NETNS" ]; do
+    sleep 1
+    # if the openvpn background job exited before creating the netns, exit
+    [ -e "/proc/$sudo_pid" ] || exit 125
+done
 
 # in the netns, wait for default IPv4 route, then run the command
 $netns_exec -- "$NETNS" /bin/sh -c '
