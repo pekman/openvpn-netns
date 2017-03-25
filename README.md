@@ -67,6 +67,15 @@ from the server when the connection is started and deleted when the
 connection is terminated.
 
 
+IPv6
+----
+
+IPv6 support over the VPN tunnel is currently turned off by default,
+because IPv6 routing code is untested and should be considered
+experimental. To turn on IPv6 support, use command line option
+`--setenv IPV6 on`.
+
+
 Installing
 ----------
 

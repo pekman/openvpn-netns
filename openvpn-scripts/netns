@@ -160,7 +160,7 @@ case "$script_type" in
                        dev "$dev"
             fi
         fi
-        if [ -n "$ifconfig_ipv6_local" ]; then
+        if [ -n "$IPV6" -a -n "$ifconfig_ipv6_local" ]; then
             if [ -n "$ifconfig_ipv6_remote" ]; then
                 ip netns exec "$NETNS" \
                    ip -6 addr add \
@@ -211,26 +211,29 @@ case "$script_type" in
                 ip -4 route add  default  via "$route_vpn_gateway"
             fi
 
-            i=1
-            while
-                # There doesn't seem to be $route_ipv6_metric_<n>
-                # according to the manpage.
-                eval net=\"\$route_ipv6_network_$i\"
-                eval gw=\"\$route_ipv6_gateway_$i\"
-                [ -n "$net" ]
-            do
-                ip -6 route add  "$net"  via "$gw"  metric 100
-                i=$(( i + 1 ))
-            done
+            if [ -n "$IPV6" ]; then
+                i=1
+                while
+                    # There doesn't seem to be $route_ipv6_metric_<n>
+                    # according to the manpage.
+                    eval net=\"\$route_ipv6_network_$i\"
+                    eval gw=\"\$route_ipv6_gateway_$i\"
+                    [ -n "$net" ]
+                do
+                    ip -6 route add  "$net"  via "$gw"  metric 100
+                    i=$(( i + 1 ))
+                done
 
-            # There's no $route_vpn_gateway for IPv6. It's not
-            # documented if OpenVPN includes default route in
-            # $route_ipv6_*. Set default route to remote VPN endpoint
-            # address if there is one. Use higher metric than
-            # $route_ipv6_* routes to give preference to a possible
-            # default route in them.
-            if [ -n "$ifconfig_ipv6_remote" ]; then
-                ip -6 route add  default  via "$ifconfig_ipv6_remote"  metric 200
+                # There's no $route_vpn_gateway for IPv6. It's not
+                # documented if OpenVPN includes default route in
+                # $route_ipv6_*. Set default route to remote VPN
+                # endpoint address if there is one. Use higher metric
+                # than $route_ipv6_* routes to give preference to a
+                # possible default route in them.
+                if [ -n "$ifconfig_ipv6_remote" ]; then
+                    ip -6 route add  default \
+                        via "$ifconfig_ipv6_remote"  metric 200
+                fi
             fi
 EOF
         ;;
