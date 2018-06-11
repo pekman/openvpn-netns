@@ -132,7 +132,7 @@ case "$script_type" in
 
         # create namespace if it doesn't exist yet
         if ! [ -e "/var/run/netns/$NETNS" ]; then
-            ip netns replace "$NETNS"  || exit
+            ip netns add "$NETNS"  || exit
             ip netns exec "$NETNS"  ip link set dev lo up
 
             # create temporary file that marks the namespace as ours
@@ -246,7 +246,7 @@ EOF
         ;;
 
 
-    down)
+    downX)
         # if this script created the network namespace, clean up
         if [ -e "$TMPFILE_DIR"/created-netns-"$NETNS" ]; then
             rm "$TMPFILE_DIR"/created-netns-"$NETNS"
@@ -259,17 +259,17 @@ EOF
             case "$(head -n 1 /etc/netns/"$NETNS"/resolv.conf)" in
                 '# Generated for openvpn connection in network namespace "'*)
 
-                    rm /etc/netns/"$NETNS"/resolv.conf
+                    #rm /etc/netns/"$NETNS"/resolv.conf
 
                     # If we created the directories too, try to remove
                     # them. Ignore errors silently, because someone
                     # might have created other files there.
                     case "$(cat "$TMPFILE_DIR"/created-resolvconf-"$NETNS")" in
                         ns)
-                            rmdir /etc/netns/"$NETNS"  2>/dev/null
+                            #rmdir /etc/netns/"$NETNS"  2>/dev/null
                             ;;
                         netns/ns)
-                            rmdir /etc/netns/"$NETNS" /etc/netns  2>/dev/null
+                            #rmdir /etc/netns/"$NETNS" /etc/netns  2>/dev/null
                             ;;
                     esac
                     ;;
