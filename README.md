@@ -43,8 +43,25 @@ with this script. To use it directly, start OpenVPN as follows:
         --setenv NETNS "<netns-name>" \
         --up openvpn-scripts/netns \
         --route-up openvpn-scripts/netns \
-        --down openvpn-scripts/netns \
         ...
+
+The above will leave the namespace and routes up even after openvpn
+disconnects/reconnects. This is useful in case the connecrtion to the
+VPN server breaks temporarily. Otherwise, any apps started with `ip 
+netns exec vpn COMMAND` would no longer see the network even if
+openvpn reconnects. If you no longer need the namespace, then do:
+
+    NETNS=vpn openvpn-scripts/netns down
+
+If you want to automatically clean up the namespace when openvpn
+disconnects then add the following to the command line
+
+    --down openvpn-scripts/netns
+
+**NOTE:** if yo use --down then in case the vpn connection breaks then
+even if openvpn reconnects immediately, all apps started via `ip netns
+exec vpn COMMAND` will break and will have to be restarted. This is
+because the former namespace to which they were attached is destroyed.
 
 
 Settings
