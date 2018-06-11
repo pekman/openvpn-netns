@@ -51,7 +51,7 @@ VPN server breaks temporarily. Otherwise, any apps started with `ip
 netns exec vpn COMMAND` would no longer see the network even if
 openvpn reconnects. If you no longer need the namespace, then do:
 
-    NETNS=vpn script_type=down openvpn-scripts/netns
+    NETNS="<netns-name>" script_type=down openvpn-scripts/netns
 
 If you want to automatically clean up the namespace when openvpn
 disconnects then add the following to the command line
