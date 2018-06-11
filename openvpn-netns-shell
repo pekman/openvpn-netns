@@ -125,7 +125,6 @@ eval sudo /bin/sh -s '"$quiet" "$NETNS" "$script_dir"/netns "$fifo" "$tmpdir"' \
         --setenv NETNS "$netns" \
         --up "$script" \
         --route-up "$script" \
-        --down "$script" \
         "$@" \
         | \
         while read -r line; do

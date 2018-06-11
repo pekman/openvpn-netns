@@ -13,5 +13,4 @@ exec sudo openvpn \
     --setenv NETNS "$NETNS" \
     --up "$SCRIPT_DIR"/netns \
     --route-up "$SCRIPT_DIR"/netns \
-    --down "$SCRIPT_DIR"/netns \
     $config_arg "$@"

@@ -5,12 +5,19 @@
 #
 # based on http://www.naju.se/articles/openvpn-netns.html
 #
-# To use this script, run openvpn as follows:
+# For resilient connections (tunneled apps survive openvon restarts), run openvpn as follows:
+# openvpn --ifconfig-noexec --route-noexec --script-security 2 \
+#   --setenv NETNS "<netns-name>" \
+#   --up netns \
+#   --route-up netns
+#   ...
+#
+# For on-off connections (tunneled apps will lose connection even if openvon reconnects), run openvpn as follows:
 # openvpn --ifconfig-noexec --route-noexec --script-security 2 \
 #   --setenv NETNS "<netns-name>" \
 #   --up netns \
 #   --route-up netns \
-#   --down netns \
+#   --down netns
 #   ...
 
 
@@ -147,14 +154,14 @@ case "$script_type" in
         if [ -n "$ifconfig_local" ]; then
             if [ -n "$ifconfig_remote" ]; then
                 ip netns exec "$NETNS" \
-                   ip -4 addr add \
+                   ip -4 addr replace \
                        local "$ifconfig_local" \
                        peer "$ifconfig_remote/$netmask4" \
                        ${ifconfig_broadcast:+broadcast "$ifconfig_broadcast"} \
                        dev "$dev"
             else
                 ip netns exec "$NETNS" \
-                   ip -4 addr add \
+                   ip -4 addr replace \
                        local "$ifconfig_local/$netmask4" \
                        ${ifconfig_broadcast:+broadcast "$ifconfig_broadcast"} \
                        dev "$dev"
@@ -163,13 +170,13 @@ case "$script_type" in
         if [ -n "$IPV6" -a -n "$ifconfig_ipv6_local" ]; then
             if [ -n "$ifconfig_ipv6_remote" ]; then
                 ip netns exec "$NETNS" \
-                   ip -6 addr add \
+                   ip -6 addr replace \
                       local "$ifconfig_ipv6_local" \
                       peer "$ifconfig_ipv6_remote/$netbits6" \
                       dev "$dev"
             else
                 ip netns exec "$NETNS" \
-                   ip -6 addr add \
+                   ip -6 addr replace \
                       local "$ifconfig_ipv6_local/$netbits6" \
                       dev "$dev"
             fi
@@ -203,12 +210,12 @@ case "$script_type" in
                 eval mtr=\"\$route_metric_$i\"
                 [ -n "$net" ]
             do
-                ip -4 route add  "$net/$mask"  via "$gw"  ${mtr:+metric "$mtr"}
+                ip -4 route replace  "$net/$mask"  via "$gw"  ${mtr:+metric "$mtr"}
                 i=$(( i + 1 ))
             done
 
             if [ -n "$route_vpn_gateway" ]; then
-                ip -4 route add  default  via "$route_vpn_gateway"
+                ip -4 route replace  default  via "$route_vpn_gateway"
             fi
 
             if [ -n "$IPV6" ]; then
@@ -220,7 +227,7 @@ case "$script_type" in
                     eval gw=\"\$route_ipv6_gateway_$i\"
                     [ -n "$net" ]
                 do
-                    ip -6 route add  "$net"  via "$gw"  metric 100
+                    ip -6 route replace  "$net"  via "$gw"  metric 100
                     i=$(( i + 1 ))
                 done
 
@@ -231,7 +238,7 @@ case "$script_type" in
                 # than $route_ipv6_* routes to give preference to a
                 # possible default route in them.
                 if [ -n "$ifconfig_ipv6_remote" ]; then
-                    ip -6 route add  default \
+                    ip -6 route replace  default \
                         via "$ifconfig_ipv6_remote"  metric 200
                 fi
             fi
@@ -252,17 +259,17 @@ EOF
             case "$(head -n 1 /etc/netns/"$NETNS"/resolv.conf)" in
                 '# Generated for openvpn connection in network namespace "'*)
 
-                    rm /etc/netns/"$NETNS"/resolv.conf
+                    #rm /etc/netns/"$NETNS"/resolv.conf
 
                     # If we created the directories too, try to remove
                     # them. Ignore errors silently, because someone
                     # might have created other files there.
                     case "$(cat "$TMPFILE_DIR"/created-resolvconf-"$NETNS")" in
                         ns)
-                            rmdir /etc/netns/"$NETNS"  2>/dev/null
+                            #rmdir /etc/netns/"$NETNS"  2>/dev/null
                             ;;
                         netns/ns)
-                            rmdir /etc/netns/"$NETNS" /etc/netns  2>/dev/null
+                            #rmdir /etc/netns/"$NETNS" /etc/netns  2>/dev/null
                             ;;
                     esac
                     ;;
