@@ -246,7 +246,7 @@ EOF
         ;;
 
 
-    downX)
+    down)
         # if this script created the network namespace, clean up
         if [ -e "$TMPFILE_DIR"/created-netns-"$NETNS" ]; then
             rm "$TMPFILE_DIR"/created-netns-"$NETNS"
